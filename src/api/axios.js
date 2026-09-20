@@ -14,14 +14,17 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// Handle 401 globally — redirect to login
+// Handle 401 globally — redirect to login, EXCEPT for login request itself
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
+    const isLoginRequest = error.config?.url?.includes('/auth/login');
+    if (error.response?.status === 401 && !isLoginRequest) {
       localStorage.removeItem('arogyalink_token');
       localStorage.removeItem('arogyalink_user');
-      window.location.href = '/login';
+      if (window.location.pathname !== '/login') {
+        window.location.href = '/login';
+      }
     }
     return Promise.reject(error);
   }

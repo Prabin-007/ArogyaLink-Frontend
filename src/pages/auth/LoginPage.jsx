@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { loginUser } from '../../api/auth';
-import { Heart } from 'lucide-react';
+import { Heart, AlertCircle } from 'lucide-react';
 
 const ROLES = [
   { value: 'ASHA', label: 'ASHA Worker' },
@@ -32,7 +32,8 @@ export default function LoginPage() {
       login(token, user);
       navigate('/dashboard');
     } catch (err) {
-      setError(err.response?.data?.message || 'Login failed. Please check your credentials.');
+      const serverMsg = err.response?.data?.message || err.response?.data?.error;
+      setError(serverMsg || 'Incorrect ID or password. Please check your credentials and selected role.');
     } finally {
       setLoading(false);
     }
@@ -55,8 +56,9 @@ export default function LoginPage() {
           <h2 className="text-lg font-semibold text-stone-800 mb-5">Sign in to your account</h2>
 
           {error && (
-            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
-              {error}
+            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700 flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+              <span>{error}</span>
             </div>
           )}
 
