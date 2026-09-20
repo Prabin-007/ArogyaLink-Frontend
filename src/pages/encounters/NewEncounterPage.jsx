@@ -10,6 +10,12 @@ export default function NewEncounterPage() {
   const [patientId, setPatientId] = useState('');
   const [encounterType, setEncounterType] = useState('PHC_VISIT');
   const [facilityId, setFacilityId] = useState('Saswad PHC');
+  const [encounterDate, setEncounterDate] = useState(() => {
+    const now = new Date();
+    // Format YYYY-MM-DDTHH:mm in local time
+    const offset = now.getTimezoneOffset() * 60000;
+    return new Date(now.getTime() - offset).toISOString().slice(0, 16);
+  });
   const [symptoms, setSymptoms] = useState('');
   const [clinicalNotes, setClinicalNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -34,6 +40,7 @@ export default function NewEncounterPage() {
         patientId,
         facilityId,
         encounterType,
+        encounterDate: new Date(encounterDate).toISOString(),
         symptoms: symptomList,
         clinicalNotes: clinicalNotes.trim(),
       });
@@ -74,9 +81,9 @@ export default function NewEncounterPage() {
             </select>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-medium text-stone-700 mb-1">Encounter Type</label>
+              <label className="block text-xs font-medium text-stone-700 mb-1">Encounter Type *</label>
               <select
                 value={encounterType}
                 onChange={(e) => setEncounterType(e.target.value)}
@@ -89,15 +96,27 @@ export default function NewEncounterPage() {
               </select>
             </div>
             <div>
-              <label className="block text-xs font-medium text-stone-700 mb-1">Facility Name / ID</label>
+              <label className="block text-xs font-medium text-stone-700 mb-1">Consultation Date & Time *</label>
               <input
-                type="text"
-                value={facilityId}
-                onChange={(e) => setFacilityId(e.target.value)}
-                placeholder="e.g. Saswad PHC"
-                className="w-full px-3 py-2 text-sm rounded-lg border border-stone-300 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                type="datetime-local"
+                required
+                value={encounterDate}
+                onChange={(e) => setEncounterDate(e.target.value)}
+                className="w-full px-3 py-2 text-sm rounded-lg border border-stone-300 focus:ring-2 focus:ring-emerald-500 focus:outline-none bg-white"
               />
             </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-stone-700 mb-1">Facility Name / ID *</label>
+            <input
+              type="text"
+              required
+              value={facilityId}
+              onChange={(e) => setFacilityId(e.target.value)}
+              placeholder="e.g. Saswad PHC"
+              className="w-full px-3 py-2 text-sm rounded-lg border border-stone-300 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+            />
           </div>
 
           <div>
