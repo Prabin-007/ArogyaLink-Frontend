@@ -93,6 +93,7 @@ export default function NewEncounterPage() {
                 <option value="TELECONSULTATION">Teleconsultation</option>
                 <option value="EMERGENCY">Emergency</option>
                 <option value="FOLLOW_UP_VISIT">Follow-up Visit</option>
+                <option value="HOME_VISIT">Home Visit (ASHA Field)</option>
               </select>
             </div>
             <div>

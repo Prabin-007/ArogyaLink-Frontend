@@ -37,6 +37,8 @@ export default function RecordVitalsPage() {
         patientId: selectedPatientId,
         temperature: Number(vitals.temperature),
         heartRate: Number(vitals.heartRate),
+        bloodPressureSystolic: Number(vitals.bloodPressureSystolic),
+        bloodPressureDiastolic: Number(vitals.bloodPressureDiastolic),
         bloodPressure: `${vitals.bloodPressureSystolic}/${vitals.bloodPressureDiastolic}`,
         oxygenSaturation: Number(vitals.oxygenSaturation),
         weight: Number(vitals.weight),

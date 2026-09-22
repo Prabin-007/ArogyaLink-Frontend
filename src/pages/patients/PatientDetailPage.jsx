@@ -86,15 +86,54 @@ export default function PatientDetailPage() {
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <h1 className="text-xl font-semibold text-stone-800">{patient.name}</h1>
+              {patient.category && (
+                <span className="px-2 py-0.5 bg-stone-100 text-stone-700 text-xs font-medium rounded-full">
+                  {patient.category === 'PREGNANT' ? '🤰 Pregnant Woman' :
+                   patient.category === 'CHILD_UNDER_5' ? '👶 Child (Under 5)' :
+                   patient.category === 'NCD' ? '🩺 NCD / Chronic' :
+                   patient.category === 'ELDERLY' ? '👵 Elderly' : 'General'}
+                </span>
+              )}
               {patient.isHighRisk && (
-                <span className="px-2 py-0.5 bg-red-100 text-red-700 text-xs font-medium rounded-full">High Risk</span>
+                <span className="px-2 py-0.5 bg-red-100 text-red-700 text-xs font-semibold rounded-full flex items-center gap-1">
+                  ⚠️ High Risk
+                </span>
               )}
             </div>
+            {patient.isHighRisk && Array.isArray(patient.riskReasons) && patient.riskReasons.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {patient.riskReasons.map((r, idx) => (
+                  <span key={idx} className="px-2 py-0.5 bg-rose-50 border border-rose-200 text-rose-700 text-[11px] rounded-md font-medium">
+                    {r}
+                  </span>
+                ))}
+              </div>
+            )}
             <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-sm text-stone-500">
               <span className="flex items-center gap-1"><Calendar className="w-3.5 h-3.5" />{getAge(patient.dateOfBirth)} yrs · {GENDER_LABELS[patient.gender] || patient.gender}</span>
               {patient.phone && <span className="flex items-center gap-1"><Phone className="w-3.5 h-3.5" />{patient.phone}</span>}
               <span className="flex items-center gap-1"><MapPin className="w-3.5 h-3.5" />{patient.village}, {patient.district}, {patient.state}</span>
             </div>
+          </div>
+          <div className="flex flex-wrap sm:flex-col gap-2 shrink-0">
+            <Link
+              to="/vitals/record"
+              className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-emerald-50 text-emerald-700 text-xs font-medium rounded-lg hover:bg-emerald-100 border border-emerald-200 transition-colors"
+            >
+              Record Vitals
+            </Link>
+            <Link
+              to="/encounters/new"
+              className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-stone-100 text-stone-700 text-xs font-medium rounded-lg hover:bg-stone-200 transition-colors"
+            >
+              Consultation
+            </Link>
+            <Link
+              to="/referrals"
+              className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-amber-50 text-amber-800 text-xs font-medium rounded-lg hover:bg-amber-100 border border-amber-200 transition-colors"
+            >
+              Refer Patient
+            </Link>
           </div>
         </div>
       </div>

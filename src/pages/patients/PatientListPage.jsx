@@ -77,7 +77,14 @@ export default function PatientListPage() {
               {patients.map((p) => (
                 <tr key={p.id} className="border-b border-stone-100 last:border-0 hover:bg-stone-50 transition-colors">
                   <td className="px-4 py-3">
-                    <div className="font-medium text-stone-800">{p.name}</div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-medium text-stone-800">{p.name}</span>
+                      {p.isHighRisk && (
+                        <span className="px-1.5 py-0.5 text-[10px] font-semibold bg-red-100 text-red-700 rounded-md">
+                          High Risk
+                        </span>
+                      )}
+                    </div>
                     <div className="text-xs text-stone-400 sm:hidden">{p.village} · {p.gender}</div>
                   </td>
                   <td className="px-4 py-3 text-stone-600 hidden sm:table-cell">{getAge(p.dateOfBirth)}</td>
