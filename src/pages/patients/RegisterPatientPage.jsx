@@ -5,11 +5,10 @@ import { UserPlus, CheckCircle2 } from 'lucide-react';
 
 const CATEGORIES = [
   { value: 'GENERAL', label: 'General' },
-  { value: 'PREGNANT_WOMAN', label: 'Pregnant Woman' },
-  { value: 'INFANT', label: 'Infant (0-1 yr)' },
-  { value: 'CHILD_UNDER_5', label: 'Child (1-5 yrs)' },
+  { value: 'PREGNANT', label: 'Pregnant Woman' },
+  { value: 'CHILD_UNDER_5', label: 'Child (Under 5 yrs)' },
+  { value: 'NCD', label: 'Chronic Disease / NCD' },
   { value: 'ELDERLY', label: 'Elderly (60+ yrs)' },
-  { value: 'CHRONIC_DISEASE', label: 'Chronic Disease Patient' },
 ];
 
 export default function RegisterPatientPage() {
