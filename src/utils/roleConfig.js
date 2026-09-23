@@ -18,7 +18,7 @@ export const NAV_ITEMS = [
   { label: 'Facilities', path: '/facilities', icon: Building2, roles: ['DOCTOR', 'SPECIALIST', 'HOSPITAL_ADMIN', 'SYSTEM_ADMIN'] },
   { label: 'Teleconsult', path: '/teleconsult', icon: Video, roles: ['DOCTOR', 'SPECIALIST'], placeholder: true },
   { label: 'AI Triage', path: '/triage', icon: Brain, roles: ['DOCTOR', 'SPECIALIST'], placeholder: true },
-  { label: 'Pharmacy', path: '/pharmacy', icon: Pill, roles: ['SYSTEM_ADMIN'], placeholder: true },
+  { label: 'Resources & Stock', path: '/resources', icon: Pill, roles: ['DOCTOR', 'SPECIALIST', 'HOSPITAL_ADMIN', 'SYSTEM_ADMIN'] },
   { label: 'Manage Users', path: '/admin/users', icon: UserCog, roles: ['SYSTEM_ADMIN'] },
 ];
 

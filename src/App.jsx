@@ -18,6 +18,7 @@ import AssignedFollowUpsPage from './pages/followups/AssignedFollowUpsPage';
 import OverdueFollowUpsPage from './pages/followups/OverdueFollowUpsPage';
 import FacilityListPage from './pages/facilities/FacilityListPage';
 import UserManagementPage from './pages/admin/UserManagementPage';
+import ResourceManagementPage from './pages/resources/ResourceManagementPage';
 
 export default function App() {
   return (
@@ -81,17 +82,9 @@ export default function App() {
                 />
               }
             />
-            <Route
-              path="/pharmacy"
-              element={
-                <PlaceholderPage
-                  title="Pharmacy & Diagnostic Stock"
-                  personNumber="6"
-                  personRole="Medicines, Diagnostics & Alerts"
-                  description="Essential drug inventory tracking, prescription fulfillment, and SMS/WhatsApp alert dispatch."
-                />
-              }
-            />
+            {/* Person 6: Resource & Availability Management (Shruti) */}
+            <Route path="/resources" element={<ResourceManagementPage />} />
+            <Route path="/pharmacy" element={<Navigate to="/resources" replace />} />
 
             {/* Admin */}
             <Route path="/admin/users" element={<UserManagementPage />} />
