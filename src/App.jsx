@@ -19,6 +19,7 @@ import OverdueFollowUpsPage from './pages/followups/OverdueFollowUpsPage';
 import FacilityListPage from './pages/facilities/FacilityListPage';
 import UserManagementPage from './pages/admin/UserManagementPage';
 import ResourceManagementPage from './pages/resources/ResourceManagementPage';
+import TriageAssessmentPage from './pages/triage/TriageAssessmentPage';
 
 export default function App() {
   return (
@@ -71,17 +72,8 @@ export default function App() {
                 />
               }
             />
-            <Route
-              path="/triage"
-              element={
-                <PlaceholderPage
-                  title="AI Emergency Triage"
-                  personNumber="5"
-                  personRole="Digital Triage & Emergency Escalation"
-                  description="Machine learning-driven patient symptom risk scoring and automatic protocol escalation."
-                />
-              }
-            />
+            {/* Person 5: AI Clinical & Emergency Triage */}
+            <Route path="/triage" element={<TriageAssessmentPage />} />
             {/* Person 6: Resource & Availability Management (Shruti) */}
             <Route path="/resources" element={<ResourceManagementPage />} />
             <Route path="/pharmacy" element={<Navigate to="/resources" replace />} />
