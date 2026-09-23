@@ -91,6 +91,45 @@ export default function ReferralDetailPage() {
         </div>
       </div>
 
+      {/* Smart Referral AI Match & Real-time Resources Card */}
+      {referral.recommendationScore != null && (
+        <div className="bg-emerald-50/60 border border-emerald-200 rounded-xl p-5 mb-6">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <span className="text-lg">🤖</span>
+              <h2 className="text-base font-semibold text-emerald-900">Smart Referral AI Match</h2>
+            </div>
+            <div className="px-3 py-1 bg-emerald-600 text-white font-bold text-sm rounded-full shadow-sm">
+              AI Score: {referral.recommendationScore} / 100
+            </div>
+          </div>
+          
+          <h4 className="text-xs font-semibold text-emerald-800 uppercase tracking-wider mb-2">Recommendation Rationale & Live Resource Availability:</h4>
+          <ul className="space-y-1.5 mb-3 text-sm text-stone-700">
+            {(referral.recommendationReasons || []).map((reason, idx) => (
+              <li key={idx} className="flex items-start gap-2">
+                <span className="text-emerald-600 font-bold mt-0.5">•</span>
+                <span>{reason}</span>
+              </li>
+            ))}
+          </ul>
+
+          {referral.alternativeFacilities && referral.alternativeFacilities.length > 0 && (
+            <div className="mt-4 pt-3 border-t border-emerald-200/70">
+              <h4 className="text-xs font-semibold text-emerald-800 uppercase tracking-wider mb-2">Alternative Eligible Facilities:</h4>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {referral.alternativeFacilities.map((alt, idx) => (
+                  <div key={idx} className="bg-white/90 p-2.5 rounded-lg border border-emerald-100 text-xs text-stone-600">
+                    <div className="font-medium text-stone-800">{alt.facilityName} ({alt.facilityType?.replace(/_/g, ' ')})</div>
+                    <div className="text-stone-500">Score: {alt.score} · {alt.distanceKm} km away</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Advance Status */}
       {nextStatus && (
         <div className="bg-white rounded-xl border border-stone-200 p-5 mb-6">
