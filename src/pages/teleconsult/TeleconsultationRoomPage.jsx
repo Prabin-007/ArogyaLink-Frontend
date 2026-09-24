@@ -13,18 +13,28 @@ import {
   RefreshCw,
   Copy,
   Check,
+  Radio,
+  Clock,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useSocket } from '../../context/SocketContext';
 
+// Comprehensive STUN + Free OpenRelay TURN servers for 100% NAT/CGNAT Traversal
 const ICE_SERVERS = {
   iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
     { urls: 'stun:stun2.l.google.com:19302' },
-    { urls: 'stun:stun3.l.google.com:19302' },
-    { urls: 'stun:stun4.l.google.com:19302' },
     { urls: 'stun:stun.cloudflare.com:3478' },
+    {
+      urls: [
+        'turn:openrelay.metered.ca:80',
+        'turn:openrelay.metered.ca:443',
+        'turn:openrelay.metered.ca:443?transport=tcp',
+      ],
+      username: 'openrelay',
+      credential: 'openrelay',
+    },
   ],
   iceCandidatePoolSize: 10,
 };
@@ -43,25 +53,29 @@ export default function TeleconsultationRoomPage() {
   const candidateQueueRef = useRef([]);
   const statsTimerRef = useRef(null);
   const reconnectTimeoutRef = useRef(null);
-  const offerTimeoutRef = useRef(null);
 
   const [micOn, setMicOn] = useState(true);
   const [camOn, setCamOn] = useState(true);
   const [quality, setQuality] = useState('Good');
   const [callEnded, setCallEnded] = useState(false);
   const [connError, setConnError] = useState('');
-  const [remoteJoined, setRemoteJoined] = useState(false);
-  const [callDuration, setCallDuration] = useState(0);
   const [copied, setCopied] = useState(false);
 
-  // Call duration counter
+  // Connection Lifecycle States
+  const [peerInRoom, setPeerInRoom] = useState(false);
+  const [peerInfo, setPeerInfo] = useState(null);
+  const [streamActive, setStreamActive] = useState(false);
+  const [connStatus, setConnStatus] = useState('waiting'); // 'waiting' | 'connecting' | 'connected' | 'disconnected'
+  const [callDuration, setCallDuration] = useState(0);
+
+  // Call duration increments ONLY when the remote video/audio stream is active
   useEffect(() => {
-    if (!remoteJoined || callEnded) return;
+    if (!streamActive || callEnded) return;
     const timer = setInterval(() => {
       setCallDuration((prev) => prev + 1);
     }, 1000);
     return () => clearInterval(timer);
-  }, [remoteJoined, callEnded]);
+  }, [streamActive, callEnded]);
 
   const formatDuration = (seconds) => {
     const mins = Math.floor(seconds / 60);
@@ -75,43 +89,20 @@ export default function TeleconsultationRoomPage() {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  // ── Drains queued ICE candidates once remoteDescription is set ──────────────
+  // ── Drains buffered ICE candidates once remoteDescription is set ───────────
   const drainCandidates = async (pc) => {
     while (candidateQueueRef.current.length > 0) {
       const candidate = candidateQueueRef.current.shift();
       try {
         await pc.addIceCandidate(new RTCIceCandidate(candidate));
       } catch (err) {
-        console.warn('[WebRTC] Draining candidate warning:', err.message);
+        console.warn('[WebRTC] Buffered candidate warning:', err.message);
       }
     }
   };
 
-  // ── Trigger ICE Restart on disruption ───────────────────────────────────────
-  const triggerIceRestart = useCallback(async () => {
-    const pc = pcRef.current;
-    if (!pc || pc.signalingState === 'closed') return;
-    try {
-      console.log('[WebRTC] Initiating ICE restart...');
-      setConnError('Re-negotiating connection...');
-      const offer = await pc.createOffer({ iceRestart: true });
-      await pc.setLocalDescription(offer);
-      socket?.emit('offer', { roomId, offer });
-    } catch (err) {
-      console.warn('[WebRTC] ICE restart failed:', err.message);
-      setConnError('Reconnection failed. Please refresh or rejoin.');
-    }
-  }, [socket, roomId]);
-
-  // ── Teardown Connection & Devices ──────────────────────────────────────────
-  const teardown = useCallback(() => {
-    if (statsTimerRef.current) clearInterval(statsTimerRef.current);
-    if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
-    if (offerTimeoutRef.current) clearTimeout(offerTimeoutRef.current);
-
-    localStreamRef.current?.getTracks().forEach((track) => track.stop());
-    localStreamRef.current = null;
-
+  // ── Teardown only the peer connection (keeps local camera alive) ────────────
+  const teardownPeerConnection = useCallback(() => {
     if (pcRef.current) {
       pcRef.current.ontrack = null;
       pcRef.current.onicecandidate = null;
@@ -119,60 +110,62 @@ export default function TeleconsultationRoomPage() {
       pcRef.current.close();
       pcRef.current = null;
     }
+    candidateQueueRef.current = [];
+    remoteStreamRef.current = new MediaStream();
+    if (remoteVideoRef.current) {
+      remoteVideoRef.current.srcObject = null;
+    }
   }, []);
 
-  // ── WebRTC Setup & Signaling ───────────────────────────────────────────────
+  // ── Trigger ICE Restart on network disruption ──────────────────────────────
+  const triggerIceRestart = useCallback(async () => {
+    const pc = pcRef.current;
+    if (!pc || pc.signalingState === 'closed') return;
+    try {
+      console.log('[WebRTC] Initiating ICE restart with TURN...');
+      setConnError('Re-negotiating connection...');
+      const offer = await pc.createOffer({ iceRestart: true });
+      await pc.setLocalDescription(offer);
+      socket?.emit('offer', { roomId, offer });
+    } catch (err) {
+      console.warn('[WebRTC] ICE restart failed:', err.message);
+      setConnError('Reconnection failed. Click Reconnect or refresh.');
+    }
+  }, [socket, roomId]);
+
+  // ── Complete Teardown when leaving room ─────────────────────────────────────
+  const fullTeardown = useCallback(() => {
+    if (statsTimerRef.current) clearInterval(statsTimerRef.current);
+    if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
+
+    localStreamRef.current?.getTracks().forEach((track) => track.stop());
+    localStreamRef.current = null;
+
+    teardownPeerConnection();
+  }, [teardownPeerConnection]);
+
+  // ── WebRTC Setup & Socket Signaling ────────────────────────────────────────
   useEffect(() => {
     if (!socket || !roomId) return;
     let cancelled = false;
 
-    async function initSession() {
-      // 1. Acquire Local Media with Graceful Fallback
-      let stream = null;
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: { width: { ideal: 1280 }, height: { ideal: 720 } },
-          audio: true,
-        });
-      } catch (err) {
-        console.warn('[WebRTC] High-res camera busy, trying standard:', err.message);
-        try {
-          stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-        } catch (err2) {
-          console.warn('[WebRTC] Camera locked by other window, falling back to audio:', err2.message);
-          try {
-            stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-            setCamOn(false);
-          } catch (err3) {
-            console.error('[WebRTC] Device permission error:', err3);
-            setConnError('Microphone/Camera permission denied. Please allow access and reload.');
-            return;
-          }
-        }
-      }
+    // Helper to create a fresh RTCPeerConnection configured with local tracks
+    function createPeerConnection() {
+      teardownPeerConnection();
 
-      if (cancelled) {
-        stream?.getTracks().forEach((t) => t.stop());
-        return;
-      }
-
-      localStreamRef.current = stream;
-      if (localVideoRef.current && stream.getVideoTracks().length > 0) {
-        localVideoRef.current.srcObject = stream;
-      }
-
-      // 2. Initialize RTCPeerConnection
       const pc = new RTCPeerConnection(ICE_SERVERS);
       pcRef.current = pc;
 
-      // Add local audio and video tracks
-      stream.getTracks().forEach((track) => {
-        pc.addTrack(track, stream);
-      });
+      // Add local media tracks
+      if (localStreamRef.current) {
+        localStreamRef.current.getTracks().forEach((track) => {
+          pc.addTrack(track, localStreamRef.current);
+        });
+      }
 
-      // 3. Handle incoming remote stream tracks
+      // Handle incoming remote media tracks
       pc.ontrack = (event) => {
-        console.log('[WebRTC] Remote track received:', event.track.kind);
+        console.log('[WebRTC] ontrack received:', event.track.kind);
         const remoteStream = remoteStreamRef.current;
 
         if (event.streams && event.streams[0]) {
@@ -189,150 +182,186 @@ export default function TeleconsultationRoomPage() {
 
         if (remoteVideoRef.current) {
           remoteVideoRef.current.srcObject = remoteStream;
-          remoteVideoRef.current.play().catch((e) => console.log('Autoplay play error:', e.message));
+          remoteVideoRef.current.play().catch((e) => console.log('Autoplay hint:', e.message));
         }
 
-        setRemoteJoined(true);
+        setStreamActive(true);
+        setConnStatus('connected');
         setConnError('');
       };
 
-      // 4. Send ICE Candidates to peer
+      // Handle ICE candidates
       pc.onicecandidate = (event) => {
         if (event.candidate) {
           socket.emit('ice-candidate', { roomId, candidate: event.candidate });
         }
       };
 
-      // 5. Monitor Connection State
+      // Handle connection state changes
       pc.onconnectionstatechange = () => {
         const state = pc.connectionState;
         console.log('[WebRTC] Connection state:', state);
 
         if (state === 'connected') {
+          setConnStatus('connected');
           setConnError('');
-          setRemoteJoined(true);
           if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
         } else if (['disconnected', 'failed'].includes(state)) {
+          setConnStatus('disconnected');
           setConnError('Connection disrupted. Attempting to reconnect...');
-          // Schedule auto-reconnect after 1.5s if not restored
           if (!reconnectTimeoutRef.current) {
             reconnectTimeoutRef.current = setTimeout(() => {
               if (pcRef.current && ['disconnected', 'failed'].includes(pcRef.current.connectionState)) {
                 triggerIceRestart();
               }
-            }, 1500);
+            }, 2000);
           }
         }
       };
 
-      // 6. Join Signaling Room
+      return pc;
+    }
+
+    async function initSession() {
+      // 1. Acquire Local Camera & Microphone with Graceful Fallback
+      if (!localStreamRef.current) {
+        let stream = null;
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: { width: { ideal: 1280 }, height: { ideal: 720 } },
+            audio: true,
+          });
+        } catch (err) {
+          console.warn('[WebRTC] High-res camera busy, trying standard:', err.message);
+          try {
+            stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+          } catch (err2) {
+            console.warn('[WebRTC] Camera locked by other tab, falling back to audio-only:', err2.message);
+            try {
+              stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+              setCamOn(false);
+            } catch (err3) {
+              console.error('[WebRTC] Permission error:', err3);
+              setConnError('Camera/Microphone permission denied. Please allow access and reload.');
+              return;
+            }
+          }
+        }
+
+        if (cancelled) {
+          stream?.getTracks().forEach((t) => t.stop());
+          return;
+        }
+
+        localStreamRef.current = stream;
+        if (localVideoRef.current && stream.getVideoTracks().length > 0) {
+          localVideoRef.current.srcObject = stream;
+        }
+      }
+
+      // Initialize initial RTCPeerConnection
+      const pc = createPeerConnection();
+
+      // 2. Join the Signaling Room
       socket.emit('join-room', {
         roomId,
         userId: user?.id || 'guest',
         role: user?.role || 'DOCTOR',
       });
 
-      // ── Socket Signaling Handlers ──────────────────────────────────────────
+      // ── Socket Event Listeners ─────────────────────────────────────────────
 
-      // A. Another participant joined the room -> We initiate the offer
-      const onUserJoined = async ({ socketId }) => {
-        console.log('[WebRTC] Remote peer joined room:', socketId);
-        setRemoteJoined(true);
+      // When another participant joins the room -> WE initiate the offer
+      const onUserJoined = async ({ userId, role, socketId }) => {
+        console.log('[WebRTC] Participant joined:', role, socketId);
+        setPeerInRoom(true);
+        setPeerInfo({ userId, role });
+        setConnStatus('connecting');
         setConnError('');
+
         try {
-          const offer = await pc.createOffer();
-          await pc.setLocalDescription(offer);
+          const currentPc = pcRef.current || createPeerConnection();
+          const offer = await currentPc.createOffer();
+          await currentPc.setLocalDescription(offer);
           socket.emit('offer', { roomId, offer });
         } catch (offerErr) {
           console.error('[WebRTC] Error creating offer:', offerErr);
         }
       };
 
-      // B. We joined an occupied room -> Wait for offer, or create offer after 1.8s fallback
-      const onPeerAlreadyInRoom = () => {
-        console.log('[WebRTC] Peer is already in room, awaiting offer or initiating fallback...');
-        setRemoteJoined(true);
-        if (offerTimeoutRef.current) clearTimeout(offerTimeoutRef.current);
-
-        offerTimeoutRef.current = setTimeout(async () => {
-          if (pcRef.current && !pcRef.current.remoteDescription && pcRef.current.signalingState === 'stable') {
-            console.log('[WebRTC] Fallback: initiating offer to existing peer...');
-            try {
-              const offer = await pc.createOffer();
-              await pc.setLocalDescription(offer);
-              socket.emit('offer', { roomId, offer });
-            } catch (e) {
-              console.warn('[WebRTC] Fallback offer failed:', e);
-            }
-          }
-        }, 1800);
-      };
-
-      // C. Received Offer from Peer
+      // When we receive an offer from the remote peer -> We answer
       const onOffer = async ({ offer }) => {
         console.log('[WebRTC] Received offer from peer');
-        if (offerTimeoutRef.current) clearTimeout(offerTimeoutRef.current);
-        setRemoteJoined(true);
-        try {
-          await pc.setRemoteDescription(new RTCSessionDescription(offer));
-          await drainCandidates(pc);
+        setPeerInRoom(true);
+        setConnStatus('connecting');
 
-          const answer = await pc.createAnswer();
-          await pc.setLocalDescription(answer);
+        try {
+          const currentPc = pcRef.current || createPeerConnection();
+          await currentPc.setRemoteDescription(new RTCSessionDescription(offer));
+          await drainCandidates(currentPc);
+
+          const answer = await currentPc.createAnswer();
+          await currentPc.setLocalDescription(answer);
           socket.emit('answer', { roomId, answer });
         } catch (ansErr) {
           console.error('[WebRTC] Error handling offer:', ansErr);
         }
       };
 
-      // D. Received Answer from Peer
+      // When we receive an answer back
       const onAnswer = async ({ answer }) => {
         console.log('[WebRTC] Received answer from peer');
         try {
-          await pc.setRemoteDescription(new RTCSessionDescription(answer));
-          await drainCandidates(pc);
+          const currentPc = pcRef.current;
+          if (currentPc && currentPc.signalingState !== 'closed') {
+            await currentPc.setRemoteDescription(new RTCSessionDescription(answer));
+            await drainCandidates(currentPc);
+          }
         } catch (setAnsErr) {
           console.error('[WebRTC] Error handling answer:', setAnsErr);
         }
       };
 
-      // E. Received ICE Candidate
+      // When we receive an ICE candidate
       const onIceCandidate = async ({ candidate }) => {
         if (!candidate) return;
-        if (pc.remoteDescription && pc.remoteDescription.type) {
+        const currentPc = pcRef.current;
+        if (currentPc && currentPc.remoteDescription && currentPc.remoteDescription.type) {
           try {
-            await pc.addIceCandidate(new RTCIceCandidate(candidate));
+            await currentPc.addIceCandidate(new RTCIceCandidate(candidate));
           } catch (iceErr) {
-            console.warn('[WebRTC] Candidate error:', iceErr.message);
+            console.warn('[WebRTC] Candidate warning:', iceErr.message);
           }
         } else {
-          // Buffer candidate until remoteDescription is set
           candidateQueueRef.current.push(candidate);
         }
       };
 
-      // F. Call Ended
+      // When call is ended
       const onCallEnded = () => {
         setCallEnded(true);
-        teardown();
+        fullTeardown();
       };
 
-      // G. Peer Left
+      // When remote participant leaves the room
       const onUserLeft = () => {
-        console.log('[WebRTC] Remote peer left');
-        setRemoteJoined(false);
-        setConnError('Remote participant has left or disconnected.');
+        console.log('[WebRTC] Remote peer left room');
+        setPeerInRoom(false);
+        setPeerInfo(null);
+        setStreamActive(false);
+        setConnStatus('waiting');
+        setConnError('');
+        teardownPeerConnection();
       };
 
       socket.on('user-joined', onUserJoined);
-      socket.on('peer-already-in-room', onPeerAlreadyInRoom);
       socket.on('offer', onOffer);
       socket.on('answer', onAnswer);
       socket.on('ice-candidate', onIceCandidate);
       socket.on('call-ended', onCallEnded);
       socket.on('user-left', onUserLeft);
 
-      // 7. Network Quality Polling
+      // 3. Network Quality Poller
       statsTimerRef.current = setInterval(async () => {
         try {
           const stats = await pcRef.current?.getStats();
@@ -353,7 +382,6 @@ export default function TeleconsultationRoomPage() {
 
       return () => {
         socket.off('user-joined', onUserJoined);
-        socket.off('peer-already-in-room', onPeerAlreadyInRoom);
         socket.off('offer', onOffer);
         socket.off('answer', onAnswer);
         socket.off('ice-candidate', onIceCandidate);
@@ -370,21 +398,21 @@ export default function TeleconsultationRoomPage() {
     return () => {
       cancelled = true;
       cleanupFn?.();
-      teardown();
+      fullTeardown();
     };
-  }, [socket, roomId, user?.id, user?.role, teardown, triggerIceRestart]);
+  }, [socket, roomId, user?.id, user?.role, fullTeardown, teardownPeerConnection, triggerIceRestart]);
 
-  // Ensure remote video plays whenever remoteJoined changes
+  // Ensure remote video element plays whenever streamActive changes
   useEffect(() => {
-    if (remoteJoined && remoteVideoRef.current && remoteStreamRef.current) {
+    if (streamActive && remoteVideoRef.current && remoteStreamRef.current) {
       if (remoteVideoRef.current.srcObject !== remoteStreamRef.current) {
         remoteVideoRef.current.srcObject = remoteStreamRef.current;
       }
       remoteVideoRef.current.play().catch(() => {});
     }
-  }, [remoteJoined]);
+  }, [streamActive]);
 
-  // ── Media Toggles ──────────────────────────────────────────────────────────
+  // ── Media Controls ─────────────────────────────────────────────────────────
   function toggleMic() {
     const track = localStreamRef.current?.getAudioTracks()[0];
     if (track) {
@@ -403,11 +431,11 @@ export default function TeleconsultationRoomPage() {
 
   function handleEndCall() {
     socket?.emit('end-call', { roomId });
-    teardown();
+    fullTeardown();
     setCallEnded(true);
   }
 
-  // ── Call Ended Summary Screen ──────────────────────────────────────────────
+  // ── Call Ended Summary View ────────────────────────────────────────────────
   if (callEnded) {
     return (
       <div className="h-screen bg-stone-900 flex items-center justify-center p-4">
@@ -425,12 +453,12 @@ export default function TeleconsultationRoomPage() {
               <span className="font-mono font-bold text-stone-800">{roomId}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-stone-500">Duration:</span>
+              <span className="text-stone-500">Total Call Time:</span>
               <span className="font-bold text-stone-800">{formatDuration(callDuration)}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-stone-500">Clinical Encounter:</span>
-              <span className="text-emerald-600 font-bold">Logged to Medical Record</span>
+              <span className="text-stone-500">Clinical Record:</span>
+              <span className="text-emerald-600 font-bold">Encounter Saved</span>
             </div>
           </div>
           <button
@@ -444,7 +472,7 @@ export default function TeleconsultationRoomPage() {
     );
   }
 
-  // ── Main Video Room Interface ──────────────────────────────────────────────
+  // ── Main Video Room View ───────────────────────────────────────────────────
   return (
     <div className="h-screen max-h-screen overflow-hidden flex flex-col bg-stone-950 text-white select-none">
       {/* Top Header Bar */}
@@ -474,29 +502,49 @@ export default function TeleconsultationRoomPage() {
             <div className="flex items-center gap-2 text-xs text-stone-400 mt-0.5">
               <span>{user?.name || 'Practitioner'}</span>
               <span>•</span>
-              <span className={remoteJoined ? 'text-emerald-400 font-medium' : 'text-amber-400'}>
-                {remoteJoined ? `In Call (${formatDuration(callDuration)})` : 'Waiting for participant to join…'}
-              </span>
+              {connStatus === 'connected' && streamActive ? (
+                <span className="text-emerald-400 font-medium">
+                  In Call ({formatDuration(callDuration)})
+                </span>
+              ) : connStatus === 'connecting' ? (
+                <span className="text-cyan-400 font-medium animate-pulse">
+                  Connecting video…
+                </span>
+              ) : (
+                <span className="text-amber-400">
+                  Waiting for participant to join…
+                </span>
+              )}
             </div>
           </div>
         </div>
 
-        {/* Quality Indicator */}
+        {/* Quality / Status Indicator */}
         <div className="flex items-center gap-3">
           <div
             className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold ${
-              quality === 'Good'
-                ? 'bg-emerald-950/80 text-emerald-400 border border-emerald-800'
-                : 'bg-amber-950/80 text-amber-400 border border-amber-800'
+              connStatus === 'connected' && streamActive
+                ? quality === 'Good'
+                  ? 'bg-emerald-950/80 text-emerald-400 border border-emerald-800'
+                  : 'bg-amber-950/80 text-amber-400 border border-amber-800'
+                : 'bg-stone-800 text-stone-400 border border-stone-700'
             }`}
           >
             <Activity className="w-3.5 h-3.5" />
-            <span>{quality === 'Good' ? 'HD Quality' : 'Network Weak'}</span>
+            <span>
+              {connStatus === 'connected' && streamActive
+                ? quality === 'Good'
+                  ? 'HD Quality'
+                  : 'Network Weak'
+                : connStatus === 'connecting'
+                ? 'Negotiating...'
+                : 'Waiting for Peer'}
+            </span>
           </div>
         </div>
       </header>
 
-      {/* Main Video View Area */}
+      {/* Main Video Area */}
       <main className="flex-1 relative flex items-center justify-center p-3 sm:p-5 min-h-0 overflow-hidden">
         {/* Connection Error Banner with 1-Click Reconnect */}
         {connError && (
@@ -513,7 +561,7 @@ export default function TeleconsultationRoomPage() {
           </div>
         )}
 
-        {/* Remote Video Container Tile */}
+        {/* Video Canvas Container */}
         <div className="w-full h-full max-w-6xl rounded-2xl overflow-hidden relative border border-stone-800 bg-stone-900 shadow-2xl flex items-center justify-center">
           {/* Remote Video Stream Element */}
           <video
@@ -521,37 +569,49 @@ export default function TeleconsultationRoomPage() {
             autoPlay
             playsInline
             className={`w-full h-full object-cover transition-opacity duration-300 ${
-              remoteJoined ? 'opacity-100' : 'opacity-0 absolute pointer-events-none'
+              streamActive ? 'opacity-100' : 'opacity-0 absolute pointer-events-none'
             }`}
           />
 
-          {/* Waiting Placeholder */}
-          {!remoteJoined && (
-            <div className="text-center space-y-4 p-8">
+          {/* Clean Waiting View when Peer has not yet joined */}
+          {!streamActive && (
+            <div className="text-center space-y-4 p-8 max-w-md mx-auto">
               <div className="w-20 h-20 rounded-full bg-stone-800/90 flex items-center justify-center mx-auto border border-stone-700 shadow-inner">
-                <User className="w-10 h-10 text-stone-400 animate-pulse" />
+                {connStatus === 'connecting' ? (
+                  <Radio className="w-10 h-10 text-cyan-400 animate-pulse" />
+                ) : (
+                  <User className="w-10 h-10 text-stone-400 animate-pulse" />
+                )}
               </div>
               <div className="space-y-1">
-                <h3 className="text-lg font-bold text-stone-200">Waiting for Remote Participant</h3>
-                <p className="text-xs text-stone-400 max-w-sm mx-auto leading-relaxed">
-                  When the doctor or ASHA worker enters room <span className="font-mono text-emerald-400">{roomId}</span>, the encrypted WebRTC stream will connect automatically.
+                <h3 className="text-lg font-bold text-stone-200">
+                  {connStatus === 'connecting'
+                    ? 'Connecting Video Stream…'
+                    : 'Waiting for Other Participant'}
+                </h3>
+                <p className="text-xs text-stone-400 leading-relaxed">
+                  {connStatus === 'connecting'
+                    ? 'Participant is in the room. Establishing encrypted peer-to-peer connection...'
+                    : 'You are currently the only person in this consultation room. Share the room code below or wait for the consultant to enter.'}
                 </p>
               </div>
-              <button
-                onClick={copyRoomCode}
-                className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-stone-800 hover:bg-stone-700 border border-stone-700 text-xs text-stone-300 font-mono transition"
-              >
-                <span>Room Code: {roomId}</span>
-                {copied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3 text-stone-500" />}
-              </button>
+              <div className="pt-2">
+                <button
+                  onClick={copyRoomCode}
+                  className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-stone-800 hover:bg-stone-700 border border-stone-700 text-xs text-stone-200 font-mono transition shadow-sm"
+                >
+                  <span>Room: {roomId}</span>
+                  {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-stone-400" />}
+                </button>
+              </div>
             </div>
           )}
 
-          {/* Remote Status Badge */}
-          {remoteJoined && (
+          {/* Remote Connected Badge */}
+          {streamActive && (
             <div className="absolute bottom-4 left-4 px-3 py-1.5 bg-stone-900/80 backdrop-blur rounded-lg border border-stone-700 text-xs font-medium text-stone-200 flex items-center gap-2 z-10 shadow">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
-              Remote Participant Connected
+              <span>{peerInfo?.role || 'Remote'} Connected</span>
             </div>
           )}
 
@@ -578,7 +638,7 @@ export default function TeleconsultationRoomPage() {
         </div>
       </main>
 
-      {/* Bottom Call Controls Bar */}
+      {/* Bottom Controls Bar */}
       <footer className="h-20 shrink-0 bg-stone-900 border-t border-stone-800 flex items-center justify-center gap-4 px-6 z-20">
         <button
           onClick={toggleMic}
