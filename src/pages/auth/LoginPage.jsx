@@ -111,7 +111,9 @@ export default function LoginPage() {
 
           {/* Demo credentials hint */}
           <div className="mt-5 pt-4 border-t border-stone-100">
-            <p className="text-xs text-stone-400 text-center">Demo: DOC-DEMO-001 / ASHA-DEMO-001 · Password: Demo@1234</p>
+            <p className="text-xs text-stone-400 text-center">
+              Demo: DOC-DEMO-001, DOC-DEMO-002 / ASHA-DEMO-001, ASHA-DEMO-002, ASHA-DEMO-003 · Password: Demo@123
+            </p>
           </div>
         </div>
       </div>
