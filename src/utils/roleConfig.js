@@ -16,7 +16,7 @@ export const NAV_ITEMS = [
   { label: 'My Follow-ups', path: '/followups/assigned', icon: ClipboardCheck, roles: ['ASHA', 'ANM'] },
   { label: 'Overdue Follow-ups', path: '/followups/overdue', icon: ClipboardCheck, roles: ['DOCTOR', 'SPECIALIST', 'SYSTEM_ADMIN'] },
   { label: 'Facilities', path: '/facilities', icon: Building2, roles: ['DOCTOR', 'SPECIALIST', 'HOSPITAL_ADMIN', 'SYSTEM_ADMIN'] },
-  { label: 'Teleconsult', path: '/teleconsult', icon: Video, roles: ['DOCTOR', 'SPECIALIST'], placeholder: true },
+  { label: 'Teleconsult', path: '/teleconsult', icon: Video, roles: ['DOCTOR', 'SPECIALIST', 'ASHA', 'ANM', 'HOSPITAL_ADMIN', 'SYSTEM_ADMIN'] },
   { label: 'AI Triage', path: '/triage', icon: Brain, roles: ['DOCTOR', 'SPECIALIST', 'ASHA', 'ANM', 'HOSPITAL_ADMIN', 'SYSTEM_ADMIN'] },
   { label: 'Resources & Stock', path: '/resources', icon: Pill, roles: ['DOCTOR', 'SPECIALIST', 'HOSPITAL_ADMIN', 'SYSTEM_ADMIN'] },
   { label: 'Manage Users', path: '/admin/users', icon: UserCog, roles: ['SYSTEM_ADMIN'] },
